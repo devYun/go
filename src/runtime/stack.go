@@ -391,6 +391,7 @@ func stackalloc(n uint32) stack {
 		}
 		v = unsafe.Pointer(x)
 	} else {
+		// 申请的内存空间过大，从 runtime.stackLarge 中检查是否有剩余的空间
 		var s *mspan
 		npage := uintptr(n) >> _PageShift
 		log2npage := stacklog2(npage)
@@ -407,6 +408,7 @@ func stackalloc(n uint32) stack {
 
 		if s == nil {
 			// Allocate a new stack from the heap.
+			// 从堆上申请新的内存
 			s = mheap_.allocManual(npage, &memstats.stacks_inuse)
 			if s == nil {
 				throw("out of memory")
