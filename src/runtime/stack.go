@@ -138,6 +138,7 @@ const (
 // Stacks are assigned an order according to size.
 //     order = log_2(size/FixedStack)
 // There is a free list for each order.
+// 全局的栈缓存，分配 32KB以下内存
 var stackpool [_NumStackOrders]struct {
 	item stackpoolItem
 	_    [cpu.CacheLinePadSize - unsafe.Sizeof(stackpoolItem{})%cpu.CacheLinePadSize]byte
@@ -150,11 +151,13 @@ type stackpoolItem struct {
 }
 
 // Global pool of large stack spans.
+// 全局的栈缓存，分配 32KB 以上内存
 var stackLarge struct {
 	lock mutex
 	free [heapAddrBits - pageShift]mSpanList // free lists by log_2(s.npages)
 }
 
+// 初始化stackpool/stackLarge全局变量
 func stackinit() {
 	if _StackCacheSize&_PageMask != 0 {
 		throw("cache size must be a multiple of page size")
@@ -324,6 +327,7 @@ func stackcache_clear(c *mcache) {
 // resources and must not split the stack.
 //
 //go:systemstack
+// 栈内存分配
 func stackalloc(n uint32) stack {
 	// Stackalloc must be called on scheduler stack, so that we
 	// never try to grow the stack during the code that stackalloc runs.
@@ -352,26 +356,33 @@ func stackalloc(n uint32) stack {
 	// If we need a stack of a bigger size, we fall back on allocating
 	// a dedicated span.
 	var v unsafe.Pointer
+	// 在 Linux 上，_FixedStack = 2048、_NumStackOrders = 4、_StackCacheSize = 32768
+	// 如果申请的栈空间小于 32KB
 	if n < _FixedStack<<_NumStackOrders && n < _StackCacheSize {
 		order := uint8(0)
 		n2 := n
+		// 大于 2048
 		for n2 > _FixedStack {
 			order++
 			n2 >>= 1
 		}
 		var x gclinkptr
+		// 没有绑定 P 的情况
 		if stackNoCache != 0 || thisg.m.p == 0 || thisg.m.preemptoff != "" {
 			// thisg.m.p == 0 can happen in the guts of exitsyscall
 			// or procresize. Just get a stack from the global pool.
 			// Also don't touch stackcache during gc
 			// as it's flushed concurrently.
 			lock(&stackpool[order].item.mu)
+			// 从 stackpool 分配
 			x = stackpoolalloc(order)
 			unlock(&stackpool[order].item.mu)
 		} else {
+			// 从 P 的 mcache 分配内存
 			c := thisg.m.p.ptr().mcache
 			x = c.stackcache[order].list
 			if x.ptr() == nil {
+				// 从堆上申请一片内存空间
 				stackcacherefill(c, order)
 				x = c.stackcache[order].list
 			}
@@ -380,6 +391,7 @@ func stackalloc(n uint32) stack {
 		}
 		v = unsafe.Pointer(x)
 	} else {
+		// 申请的内存空间过大，从 runtime.stackLarge 中检查是否有剩余的空间
 		var s *mspan
 		npage := uintptr(n) >> _PageShift
 		log2npage := stacklog2(npage)
@@ -396,6 +408,7 @@ func stackalloc(n uint32) stack {
 
 		if s == nil {
 			// Allocate a new stack from the heap.
+			// 从堆上申请新的内存
 			s = mheap_.allocManual(npage, &memstats.stacks_inuse)
 			if s == nil {
 				throw("out of memory")
