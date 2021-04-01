@@ -333,9 +333,11 @@ func stackalloc(n uint32) stack {
 	// never try to grow the stack during the code that stackalloc runs.
 	// Doing so would cause a deadlock (issue 1547).
 	thisg := getg()
+	// g0 不参与栈上分配
 	if thisg != thisg.m.g0 {
 		throw("stackalloc not on scheduler stack")
 	}
+	// 栈上分配大小必须是 2 的倍数
 	if n&(n-1) != 0 {
 		throw("stack size not a power of 2")
 	}
@@ -361,13 +363,13 @@ func stackalloc(n uint32) stack {
 	if n < _FixedStack<<_NumStackOrders && n < _StackCacheSize {
 		order := uint8(0)
 		n2 := n
-		// 大于 2048
+		// 大于 2048 ,那么 for 循环 将 n2 除 2,直到 n 小于等于 2048
 		for n2 > _FixedStack {
 			order++
 			n2 >>= 1
 		}
 		var x gclinkptr
-		// 没有绑定 P 的情况
+		//preemptoff != "", 表示当前 g 对应的 m 没有被抢占
 		if stackNoCache != 0 || thisg.m.p == 0 || thisg.m.preemptoff != "" {
 			// thisg.m.p == 0 can happen in the guts of exitsyscall
 			// or procresize. Just get a stack from the global pool.
@@ -924,7 +926,7 @@ func copystack(gp *g, newsize uintptr) {
 	// Adjust pointers in the new stack.
 	gentraceback(^uintptr(0), ^uintptr(0), 0, gp, 0, nil, 0x7fffffff, adjustframe, noescape(unsafe.Pointer(&adjinfo)), 0)
 
-	// free old stack 
+	// free old stack
 	if stackPoisonCopy != 0 {
 		fillstack(old, 0xfc)
 	}
