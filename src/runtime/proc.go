@@ -3517,12 +3517,16 @@ func syscall_runtime_AfterExec() {
 
 // Allocate a new g, with a stack big enough for stacksize bytes.
 func malg(stacksize int32) *g {
+	// 创建 G 结构体
 	newg := new(g)
 	if stacksize >= 0 {
+		// 这里会在 stacksize 的基础上为每个栈预留系统调用所需的内存大小 _StackSystem
 		stacksize = round2(_StackSystem + stacksize)
+		// 切换到 G0 为 newg 初始化栈内存
 		systemstack(func() {
 			newg.stack = stackalloc(uint32(stacksize))
 		})
+		// 设置 stackguard0 ，用来判断是否要进行栈扩容
 		newg.stackguard0 = newg.stack.lo + _StackGuard
 		newg.stackguard1 = ^uintptr(0)
 		// Clear the bottom word of the stack. We record g
@@ -3550,6 +3554,7 @@ func malg(stacksize int32) *g {
 func newproc(siz int32, fn *funcval) {
 	argp := add(unsafe.Pointer(&fn), sys.PtrSize)
 	gp := getg()
+	// 获取 caller 的 PC 寄存器
 	pc := getcallerpc()
 	systemstack(func() {
 		newg := newproc1(fn, argp, siz, gp, pc)
@@ -3592,7 +3597,9 @@ func newproc1(fn *funcval, argp unsafe.Pointer, narg int32, callergp *g, callerp
 	}
 
 	_p_ := _g_.m.p.ptr()
+	// 从 P 的空闲链表中获取一个新的 G
 	newg := gfget(_p_)
+	// 获取不到则调用 malg 进行创建
 	if newg == nil {
 		newg = malg(_StackMin)
 		casgstatus(newg, _Gidle, _Gdead)
