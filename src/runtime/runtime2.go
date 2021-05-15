@@ -323,13 +323,17 @@ type gobuf struct {
 	// and restores it doesn't need write barriers. It's still
 	// typed as a pointer so that any other writes from Go get
 	// write barriers.
-	sp   uintptr
-	pc   uintptr
-	g    guintptr
+	sp   uintptr  // 保存CPU的rsp寄存器的值，栈指针寄存器，指向当前函数栈的栈顶
+	pc   uintptr  // 保存CPU的rip寄存器的值，用来跳转
+	g    guintptr // 记录当前这个gobuf对象属于哪个 goroutine
 	ctxt unsafe.Pointer
-	ret  sys.Uintreg
-	lr   uintptr
-	bp   uintptr // for GOEXPERIMENT=framepointer
+
+	// 保存系统调用的返回值，因为从系统调用返回之后如果p被其它工作线程抢占，
+	// 则这个goroutine会被放入全局运行队列被其它工作线程调度，其它线程需要知道系统调用的返回值。
+	ret sys.Uintreg // 保存系统调用的返回值
+	lr  uintptr
+	// rbp 寄存器
+	bp uintptr // for GOEXPERIMENT=framepointer
 }
 
 // sudog represents a g in a wait list, such as for sending/receiving
