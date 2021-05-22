@@ -1096,6 +1096,7 @@ func (s *state) stmt(n *Node) {
 			s.openDeferRecord(n.Left)
 		} else {
 			d := callDefer
+			// 如果没有逃逸，则分配在堆上
 			if n.Esc == EscNever {
 				d = callDeferStack
 			}

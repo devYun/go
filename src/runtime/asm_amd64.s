@@ -589,12 +589,12 @@ TEXT ·publicationBarrier(SB),NOSPLIT,$0-0
 // 3. jmp to the argument
 TEXT runtime·jmpdefer(SB), NOSPLIT, $0-16
 	MOVQ	fv+0(FP), DX	// fn
-	MOVQ	argp+8(FP), BX	// caller sp
-	LEAQ	-8(BX), SP	// caller sp after CALL
-	MOVQ	-8(SP), BP	// restore BP as if deferreturn returned (harmless if framepointers not in use)
-	SUBQ	$5, (SP)	// return to CALL again
-	MOVQ	0(DX), BX
-	JMP	BX	// but first run the deferred function
+	MOVQ	argp+8(FP), BX	// caller sp 调用方 SP
+	LEAQ	-8(BX), SP	// caller sp after CALL  CALL 后的调用方 SP
+	MOVQ	-8(SP), BP	// restore BP as if deferreturn returned (harmless if framepointers not in use) 恢复 BP
+	SUBQ	$5, (SP)	// return to CALL again 将 runtime.deferreturn 地址值写入(SP)
+	MOVQ	0(DX), BX   // BX = DX
+	JMP	BX	// but first run the deferred function 运行被 defer 的函数
 
 // Save state of caller into g->sched. Smashes R8, R9.
 TEXT gosave<>(SB),NOSPLIT,$0

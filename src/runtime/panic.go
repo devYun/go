@@ -228,6 +228,7 @@ func deferproc(siz int32, fn *funcval) { // arguments of fn follow fn
 	// to somewhere safe. The memmove below does that.
 	// Until the copy completes, we can only call nosplit routines.
 	sp := getcallersp()
+	// 这里获取的应该是 caller 的 16（SP）保存的地址值
 	argp := uintptr(unsafe.Pointer(&fn)) + unsafe.Sizeof(fn)
 	callerpc := getcallerpc()
 
@@ -278,7 +279,7 @@ func deferprocStack(d *_defer) {
 	// The other fields are junk on entry to deferprocStack and
 	// are initialized here.
 	d.started = false
-	d.heap = false
+	d.heap = false // 栈上分配的 _defer
 	d.openDefer = false
 	d.sp = getcallersp()
 	d.pc = getcallerpc()
@@ -297,6 +298,7 @@ func deferprocStack(d *_defer) {
 	// keep track of pointers to them with a write barrier.
 	*(*uintptr)(unsafe.Pointer(&d._panic)) = 0
 	*(*uintptr)(unsafe.Pointer(&d.fd)) = 0
+	// 将多个 _defer 记录通过链表进行串联
 	*(*uintptr)(unsafe.Pointer(&d.link)) = uintptr(unsafe.Pointer(gp._defer))
 	*(*uintptr)(unsafe.Pointer(&gp._defer)) = uintptr(unsafe.Pointer(d))
 
@@ -531,6 +533,7 @@ func deferreturn(arg0 uintptr) {
 	if d == nil {
 		return
 	}
+	// 确定 defer 的调用方是不是当前 deferreturn 的调用方
 	sp := getcallersp()
 	if d.sp != sp {
 		return
@@ -555,6 +558,8 @@ func deferreturn(arg0 uintptr) {
 	case 0:
 		// Do nothing.
 	case sys.PtrSize:
+		// 将 defer 保存的参数复制出来
+		// arg0 实际上时 caller SP 栈顶地址值，所以这里实际上是将参数复制到 caller SP 栈顶地址值
 		*(*uintptr)(unsafe.Pointer(&arg0)) = *(*uintptr)(deferArgs(d))
 	default:
 		memmove(unsafe.Pointer(&arg0), deferArgs(d), uintptr(d.siz))
@@ -562,6 +567,7 @@ func deferreturn(arg0 uintptr) {
 	fn := d.fn
 	d.fn = nil
 	gp._defer = d.link
+	//将 defer 对象放入到 defer 池中，后面可以复用
 	freedefer(d)
 	// If the defer function pointer is nil, force the seg fault to happen
 	// here rather than in jmpdefer. gentraceback() throws an error if it is
@@ -569,6 +575,7 @@ func deferreturn(arg0 uintptr) {
 	// stack, because the stack trace can be incorrect in that case - see
 	// issue #8153).
 	_ = fn.fn
+	// 传入需要执行的函数和参数
 	jmpdefer(fn, uintptr(unsafe.Pointer(&arg0)))
 }
 
@@ -813,6 +820,7 @@ func readvarintUnsafe(fd unsafe.Pointer) (uint32, unsafe.Pointer) {
 // remaining defers to run in the frame.
 func runOpenDeferFrame(gp *g, d *_defer) bool {
 	done := true
+	// 所有defer信息都存储在funcdata中
 	fd := d.fd
 
 	// Skip the maxargsize

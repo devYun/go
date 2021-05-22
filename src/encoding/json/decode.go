@@ -98,6 +98,7 @@ func Unmarshal(data []byte, v interface{}) error {
 	// Avoids filling out half a data structure
 	// before discovering a JSON syntax error.
 	var d decodeState
+	//check是否合法
 	err := checkValid(data, &d.scan)
 	if err != nil {
 		return err
