@@ -162,10 +162,12 @@ func stackinit() {
 	if _StackCacheSize&_PageMask != 0 {
 		throw("cache size must be a multiple of page size")
 	}
+	// stackpool 可以分配小于 32KB 的内存
 	for i := range stackpool {
 		stackpool[i].item.span.init()
 		lockInit(&stackpool[i].item.mu, lockRankStackpool)
 	}
+	// stackLarge 用来分配大于 32KB 的栈空间
 	for i := range stackLarge.free {
 		stackLarge.free[i].init()
 		lockInit(&stackLarge.lock, lockRankStackLarge)
@@ -190,6 +192,8 @@ func stackpoolalloc(order uint8) gclinkptr {
 	lockWithRankMayAcquire(&mheap_.lock, lockRankMheap)
 	if s == nil {
 		// no free stacks. Allocate another span worth.
+		// 从堆上分配 mspan
+		// _StackCacheSize = 32 * 1024
 		s = mheap_.allocManual(_StackCacheSize>>_PageShift, &memstats.stacks_inuse)
 		if s == nil {
 			throw("out of memory")
@@ -332,6 +336,7 @@ func stackalloc(n uint32) stack {
 	// Stackalloc must be called on scheduler stack, so that we
 	// never try to grow the stack during the code that stackalloc runs.
 	// Doing so would cause a deadlock (issue 1547).
+	//  thisg 是 G0
 	thisg := getg()
 	if thisg != thisg.m.g0 {
 		throw("stackalloc not on scheduler stack")
@@ -359,16 +364,22 @@ func stackalloc(n uint32) stack {
 	// 在 Linux 上，_FixedStack = 2048、_NumStackOrders = 4、_StackCacheSize = 32768
 	// 如果申请的栈空间小于 32KB
 	if n < _FixedStack<<_NumStackOrders && n < _StackCacheSize {
+		// 小栈指大小为 2K/4K/8K/16K 的栈，在分配的时候，会根据大小计算不同的 order 值，
+		// 如果栈大小是 2K，那么 order 就是 0，4K 对应 order 就是 1，以此类推
 		order := uint8(0)
 		n2 := n
 		// 大于 2048
+		// 大于 2048 ,那么 for 循环 将 n2 除 2,直到 n 小于等于 2048
 		for n2 > _FixedStack {
+			// order 表示除了多少次
 			order++
 			n2 >>= 1
 		}
 		var x gclinkptr
-		// 没有绑定 P 的情况
+		// preemptoff != "", 在 GC 的时候会进行设置,表示如果在 GC 那么从 stackpool 分配
+		// thisg.m.p = 0 会在系统调用和 改变 P 的个数的时候调用,如果发生,那么也从 stackpool 分配
 		if stackNoCache != 0 || thisg.m.p == 0 || thisg.m.preemptoff != "" {
+			// 在发生在系统调用 exitsyscall 或改变 P 的个数在变动，亦或是在 GC 的时候，会从 stackpool 分配栈空间
 			// thisg.m.p == 0 can happen in the guts of exitsyscall
 			// or procresize. Just get a stack from the global pool.
 			// Also don't touch stackcache during gc
@@ -386,9 +397,11 @@ func stackalloc(n uint32) stack {
 				stackcacherefill(c, order)
 				x = c.stackcache[order].list
 			}
+			// 移除链表的头节点
 			c.stackcache[order].list = x.ptr().next
 			c.stackcache[order].size -= uintptr(n)
 		}
+		// 获取到分配的span内存块
 		v = unsafe.Pointer(x)
 	} else {
 		// 申请的内存空间过大，从 runtime.stackLarge 中检查是否有剩余的空间
@@ -924,7 +937,7 @@ func copystack(gp *g, newsize uintptr) {
 	// Adjust pointers in the new stack.
 	gentraceback(^uintptr(0), ^uintptr(0), 0, gp, 0, nil, 0x7fffffff, adjustframe, noescape(unsafe.Pointer(&adjinfo)), 0)
 
-	// free old stack 
+	// free old stack
 	if stackPoisonCopy != 0 {
 		fillstack(old, 0xfc)
 	}
