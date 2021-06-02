@@ -848,10 +848,12 @@ func NewRequestWithContext(ctx context.Context, method, url string, body io.Read
 	if ctx == nil {
 		return nil, errors.New("net/http: nil Context")
 	}
+	// parse url
 	u, err := urlpkg.Parse(url)
 	if err != nil {
 		return nil, err
 	}
+	// body
 	rc, ok := body.(io.ReadCloser)
 	if !ok && body != nil {
 		rc = ioutil.NopCloser(body)
@@ -869,6 +871,7 @@ func NewRequestWithContext(ctx context.Context, method, url string, body io.Read
 		Body:       rc,
 		Host:       u.Host,
 	}
+
 	if body != nil {
 		switch v := body.(type) {
 		case *bytes.Buffer:

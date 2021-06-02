@@ -59,6 +59,8 @@ type Client struct {
 	// Transport specifies the mechanism by which individual
 	// HTTP requests are made.
 	// If nil, DefaultTransport is used.
+	// Transport 用于指定单次 HTTP 请求响应的完整流程
+	// 默认值是 DefaultTransport
 	Transport RoundTripper
 
 	// CheckRedirect specifies the policy for handling redirects.
@@ -631,6 +633,7 @@ func (c *Client) do(req *Request) (retres *Response, reterr error) {
 	for {
 		// For all but the first request, create the next
 		// request hop and replace req.
+		// 执行重定向等操作
 		if len(reqs) > 0 {
 			loc := resp.Header.Get("Location")
 			if loc == "" {

@@ -357,7 +357,7 @@ func stackalloc(n uint32) stack {
 	if thisg != thisg.m.g0 {
 		throw("stackalloc not on scheduler stack")
 	}
-	// 栈上分配大小必须是 2 的倍数
+	// 栈上分配大小必须是 2 的倍数,这个大小会在创建 g 的时候传入
 	if n&(n-1) != 0 {
 		throw("stack size not a power of 2")
 	}
@@ -1064,7 +1064,7 @@ func newstack() {
 		// 如果明确禁止抢占
 		// 如果 P 的状态不是 running
 		if !canPreemptM(thisg.m) {
-			// 到这里表示不能被抢占？
+			// 到这里表示不能被抢占
 			// Let the goroutine keep running for now.
 			// gp->preempt is set, so it will be preempted next time.
 			gp.stackguard0 = gp.stack.lo + _StackGuard

@@ -999,28 +999,34 @@ func (t *Transport) queueForIdleConn(w *wantConn) (delivered bool) {
 	// If IdleConnTimeout is set, calculate the oldest
 	// persistConn.idleAt time we're willing to use a cached idle
 	// conn.
+	// 计算空闲连接超时时间
 	var oldTime time.Time
 	if t.IdleConnTimeout > 0 {
 		oldTime = time.Now().Add(-t.IdleConnTimeout)
 	}
 
 	// Look for most recently-used idle connection.
+	// 找到key相同的 connection 列表
 	if list, ok := t.idleConn[w.key]; ok {
 		stop := false
 		delivered := false
 		for len(list) > 0 && !stop {
+			// 找到connection列表最后一个
 			pconn := list[len(list)-1]
 
 			// See whether this connection has been idle too long, considering
 			// only the wall time (the Round(0)), in case this is a laptop or VM
 			// coming out of suspend with previously cached idle connections.
+			// 检查这个 connection 是不是等待太久了
 			tooOld := !oldTime.IsZero() && pconn.idleAt.Round(0).Before(oldTime)
 			if tooOld {
 				// Async cleanup. Launch in its own goroutine (as if a
 				// time.AfterFunc called it); it acquires idleMu, which we're
 				// holding, and does a synchronous net.Conn.Close.
+				// 异步 remove 该 connection
 				go pconn.closeConnIfStillIdle()
 			}
+			// 该 connection 被标记为 broken 或 闲置太久 continue
 			if pconn.isBroken() || tooOld {
 				// If either persistConn.readLoop has marked the connection
 				// broken, but Transport.removeIdleConn has not yet removed it
@@ -1030,8 +1036,10 @@ func (t *Transport) queueForIdleConn(w *wantConn) (delivered bool) {
 				list = list[:len(list)-1]
 				continue
 			}
+			// 尝试将该 connection 写入到 w 中
 			delivered = w.tryDeliver(pconn, nil)
 			if delivered {
+				// 操作成功，需要将 connection 从空闲列表中移除
 				if pconn.alt != nil {
 					// HTTP/2: multiple clients can share pconn.
 					// Leave it in the list.
@@ -1047,6 +1055,7 @@ func (t *Transport) queueForIdleConn(w *wantConn) (delivered bool) {
 		if len(list) > 0 {
 			t.idleConn[w.key] = list
 		} else {
+			// 如果该 key 对应的空闲列表不存在，那么将该key从字典中移除
 			delete(t.idleConn, w.key)
 		}
 		if stop {
@@ -1055,6 +1064,7 @@ func (t *Transport) queueForIdleConn(w *wantConn) (delivered bool) {
 	}
 
 	// Register to receive next connection that becomes idle.
+	// 如果找不到空闲的 connection，那么将该 wantConn 加入到 等待获取空闲 connection 字典中
 	if t.idleConnWait == nil {
 		t.idleConnWait = make(map[connectMethodKey]wantConnQueue)
 	}
